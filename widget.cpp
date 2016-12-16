@@ -1,33 +1,33 @@
 #include "widget.h"
+#include <QDebug>
 #include "ui_widget.h"
 
 #define PI 3.1415926
 
 Widget::Widget(QWidget *parent) :
     QWidget(parent),p1x(1),p1y(1),p2x(1),p2y(1),p3x(1),p3y(1),
+    p4x(1),p4y(1),pointLine(6),
     ui(new Ui::Widget)
 {
     ui->setupUi(this);
-    ui->P1->setText("(0,35)");ui->P2->setText("(0,-35)");
-    ui->widget->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectAxes |QCP::iSelectLegend | QCP::iSelectPlottables);
+    ui->widget->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom | QCP::iSelectAxes |QCP::iSelectLegend);
     ui->widget->xAxis->setRange(-150,150);
     ui->widget->yAxis->setRange(-150,150);
+    ui->widget->xAxis->setLabel("x");
+    ui->widget->yAxis->setLabel("y");
+
+    //Initialize the pointLine
+    for(int i=0;i<6;i++)
+    {
+        pointLine[i] = new QCPItemLine(ui->widget);
+    }
 
     p1x[0]=0.0; p1y[0]=35;p2x[0]=0.0;p2y[0]=-35;
     double r12=p1y[0]-p2y[0];
-    // create graph and assign data to it:
-    ui->widget->addGraph();//0
-    ui->widget->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssDisc,10));
-    ui->widget->graph(0)->setPen(QColor(80,100,100,100));
-    ui->widget->graph(0)->setData(p1x, p1y);
-    ui->widget->addGraph();//1
-    ui->widget->graph(1)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssStar,10));
-    ui->widget->graph(1)->setData(p2x, p2y);
+    ui->P1->setText("(0,35)");ui->P2->setText("(0,-35)");
+    ui->P3->setText("(50,50)");
 
-    // give the axes some labels:
-    ui->widget->xAxis->setLabel("x");
-    ui->widget->yAxis->setLabel("y");
-    //c121 represents the circle using p1 as centroid, r12-3.5 as radius,
+    //c121 represents the circle using p1 as centroid, r12-3.5 as radius.
     //c122 represents the circle using p1 as centroid, r12+3.5 as radius.
     QCPItemEllipse *c121 = new QCPItemEllipse(ui->widget);
     c121->setAntialiased(true);
@@ -48,33 +48,120 @@ Widget::Widget(QWidget *parent) :
 
     drawCircle(p1x[0],p1y[0],r12,12);
     drawCircle(p2x[0],p2y[0],r12,21);
-    //hyperbolic curve
-    QVector<double>ex(1000),ey(1000);//Array of the Circle
-    double L=qSqrt(qPow(p1x[0]-p2x[0],2) + qPow(p1y[0]-p2y[0],2));
-    double st = PI/(2.4)*2/500;
-    double st1 = st - PI/2.4;
-    for(int i=0; i<500;i++)
-    {
-        st1 = st*i - PI/2.4;
-        ex[i]=qSqrt(qPow(L/2,2)-qPow(3.5/2,2))*qTan(st1);
-        ey[i]=qSqrt(qPow(3.5/2,2))*(1/qCos(st1));
-        ex[i+500] = ex[i];
-        ey[i+500] = -ey[i];
-    }
+
+    // create graph and assign data to it:
+    QCPScatterStyle pointStyle = QCPScatterStyle(QCPScatterStyle::ssDisc,10);
+    QPen pointPen= QPen(QColor(255,0,0,255),10);
+    ui->widget->addGraph();//0
+    ui->widget->graph(0)->setScatterStyle(pointStyle);
+    ui->widget->graph(0)->setData(p1x, p1y);
+    ui->widget->addGraph();//1
+    ui->widget->graph(1)->setScatterStyle(pointStyle);
+    ui->widget->graph(1)->setData(p2x, p2y);
     ui->widget->addGraph ();//2
+    ui->widget->graph(2)->setScatterStyle(pointStyle);
     drawHyperbola(p1x[0], p1y[0],p2x[0],p2y[0],12);
-    ui->widget->addGraph ();//3
-    ui->widget->graph(2)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssStar,6));
-    QObject::connect(ui->p3xEdit, SIGNAL(textChanged()), this, SLOT(draw23()));
-    QObject::connect(ui->p3yEdit, SIGNAL(textChanged()), this, SLOT(draw23()));
-    ui->widget->addGraph();//4
-    p3x[0]=50; p3y[0]=50;
-    drawCircle(50,50,qSqrt(qPow(p3x[0]-p1x[0],2)+qPow(p3y[0]-p1y[0],2)),13);
+    drawLine(p1x,p1y,p2x,p2y,0);
+
+    //radioButton initialization
+    ui->rb3->setChecked (true);
+//    connect signal and slot
+    QObject::connect(ui->p3xEdit, SIGNAL(textChanged()), this, SLOT(draw3()));
+    QObject::connect(ui->p3yEdit, SIGNAL(textChanged()), this, SLOT(draw3()));
+    QObject::connect(ui->p4xEdit, SIGNAL(textChanged()), this, SLOT(draw4()));
+    QObject::connect(ui->p4yEdit, SIGNAL(textChanged()), this, SLOT(draw4()));
+    QObject::connect(ui->widget, SIGNAL(mouseDoubleClick(QMouseEvent*)), this,SLOT(doubleClickPoint(QMouseEvent*)));
+    QObject::connect(ui->widget,SIGNAL(mouseMove(QMouseEvent*)),this, SLOT(movePoint(QMouseEvent *)));
 }
 
-void Widget::mouseDoubleClickEvent (QMouseEvent *event)
+void Widget::drawLine (const QVector<double> &ax, const QVector<double> &ay, const QVector<double> &bx,const QVector<double> &by, int flag)
+{
+    pointLine[flag]->start->setCoords (ax[0],ay[0]);
+    pointLine[flag]->end->setCoords (bx[0],by[0]);
+}
+
+void Widget::draw4()
 {
 
+}
+
+void Widget::movePoint (QMouseEvent *event)
+{
+    QPoint cursor_pos = event->pos();
+    double x = ui->widget->xAxis->pixelToCoord(event->pos().x());
+    double y = ui->widget->yAxis->pixelToCoord(event->pos().y());
+    ui->mouse_x->setText (QString::number(x,'f',4));
+    ui->mouse_y->setText(QString::number(y,'f',4));
+    static int count=0;
+    count += 1;
+    qDebug("%d",count);
+    //    setToolTip(QString("%1 , %2").arg(x).arg(y));
+}
+
+void Widget::doubleClickPoint(QMouseEvent *event)
+{
+    QPoint cursor_pos = event->pos();
+    double x = ui->widget->xAxis->pixelToCoord(event->pos().x());
+    double y = ui->widget->yAxis->pixelToCoord(event->pos().y());
+
+    QPalette disableColor;
+    disableColor.setColor(QPalette::WindowText,Qt::red);
+    QPalette enableColor;
+    enableColor.setColor(QPalette::WindowText,Qt::green);
+
+    if (ui->rb3->isChecked ()){
+        //hide points and lines
+        pointLine[2]->setVisible (false);pointLine[4]->setVisible (false);pointLine[5]->setVisible (false);
+
+        ui->P3->setText ("("+QString::number(x,'f',1)+","+QString::number(y,'f',1)+")");
+        ui->p3xEdit->setText(QString::number(x,'f',1));
+        ui->p3yEdit->setText(QString::number(y,'f',1));
+        p3x[0] = x; p3y[0]=y;
+        length12=qSqrt(qPow(p1x[0]-p2x[0],2)+qPow(p1y[0]-p2y[0],2));
+        length13=qSqrt(qPow(p1x[0]-p3x[0],2)+qPow(p1y[0]-p3y[0],2));
+        length23=qSqrt(qPow(p3x[0]-p2x[0],2)+qPow(p3y[0]-p2y[0],2));
+        ui->l12->setText (QString::number(length12));
+        ui->l13->setText (QString::number(length13));
+        ui->l23->setText (QString::number(length23));
+        if (qAbs(length12-length13)<3.5 || qAbs(length12-length23)<3.5 ||qAbs(length13-length23)<3.5)
+        {
+            ui->P3->setPalette(disableColor);
+        }
+        else
+        {
+            ui->P3->setPalette(enableColor);
+        }
+    }
+    else{
+        ui->P4->setText ("("+QString::number(x,'f',1)+","+QString::number(y,'f',1)+")");
+        ui->p4xEdit->setText(QString::number(x,'f',1));
+        ui->p4yEdit->setText(QString::number(y,'f',1));
+        p4x[0] = x; p4y[0]=y;
+        length14=qSqrt(qPow(p1x[0]-p4x[0],2)+qPow(p1y[0]-p4y[0],2));
+        length24=qSqrt(qPow(p2x[0]-p4x[0],2)+qPow(p2y[0]-p4y[0],2));
+        length34=qSqrt(qPow(p3x[0]-p4x[0],2)+qPow(p3y[0]-p4y[0],2));
+        ui->l14->setText (QString::number(length14));
+        ui->l24->setText (QString::number(length24));
+        ui->l34->setText (QString::number(length34));
+        pointLine[2]->setVisible (true);pointLine[4]->setVisible (true);pointLine[5]->setVisible (true);
+        drawLine(p1x,p1y,p4x,p4y,2);
+        drawLine(p2x,p2y,p4x,p4y,4);
+        drawLine(p3x,p3y,p4x,p4y,5);
+        ui->widget->replot();
+    }
+    if (qAbs(length14-length24)<3.5 || qAbs(length14-length34)<3.5 ||qAbs(length24-length34)<3.5 || qAbs(length14-length12)<3.5 ||qAbs(length14-length13)<3.5 ||qAbs(length14-length23)<3.5 ||qAbs(length24-length12)<3.5 ||qAbs(length24-length13)<3.5 ||qAbs(length24-length23)<3.5 || qAbs(length34-length12)<3.5 ||qAbs(length34-length13)<3.5 ||qAbs(length34-length23)<3.5)
+    {
+        ui->P4->setPalette(disableColor);
+    }
+    else
+    {
+        ui->P4->setPalette(enableColor);
+    }
+}
+
+void Widget::draw3()
+{
+    draw23();
 }
 
 void Widget::draw23 ()
@@ -119,7 +206,9 @@ void Widget::draw23 ()
     static QCPCurve *threePoint=new QCPCurve(ui->widget->xAxis,ui->widget->yAxis);
     QVector<double> tPx(4),tPy(4);
     tPx[0]=p1x[0];tPy[0]=p1y[0];tPx[1]=p2x[0];tPy[1]=p2y[0];tPx[2]=p3x[0];tPy[2]=p3y[0];tPx[3]=p1x[0];tPy[3]=p1y[0];
-    threePoint->setData(tPx,tPy);
+//    threePoint->setData(tPx,tPy);
+    drawLine (p2x,p2y,p3x,p3y,3);
+    drawLine(p1x,p1y,p3x,p3y,1);
     ui->widget->replot();
 }
 
@@ -260,16 +349,16 @@ void Widget::drawCircle (double x, double y, double radius, int flag)
     {
         st1=st*i;
         //First Method
-//        cx[i]=r1*qCos(st1)+x;
-//        cy[i]=r1*qSin(st1)+y;
-//        cx[1000-i] = r2*qCos(st1)+x;
-//        cy[1000-i] = r2*qSin(st1)+y;
+        //        cx[i]=r1*qCos(st1)+x;
+        //        cy[i]=r1*qSin(st1)+y;
+        //        cx[1000-i] = r2*qCos(st1)+x;
+        //        cy[1000-i] = r2*qSin(st1)+y;
 
         //Second Method
-//        cx[2*i]=r1*qCos(st1)+x;
-//        cy[2*i]=r1*qSin(st1)+y;
-//        cx[2*i+1] = r2*qCos(st1)+x;
-//        cy[2*i+1] = r2*qSin(st1)+y;
+        //        cx[2*i]=r1*qCos(st1)+x;
+        //        cy[2*i]=r1*qSin(st1)+y;
+        //        cx[2*i+1] = r2*qCos(st1)+x;
+        //        cy[2*i+1] = r2*qSin(st1)+y;
 
         //Third Method
         ct[i]=i; ct[i+1]=i+1;
